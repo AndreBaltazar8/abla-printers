@@ -1,0 +1,49 @@
+// Explicit submodule. Requires released native device/serial APIs (0.2.47+).
+// The core entry deliberately does not import this module.
+export import "types.ab"
+export import "escpos.ab"
+export import "epos.ab"
+import "device_result.ab"
+import "abla/device"
+import "abla/serial"
+import "abla/net/contracts"
+import "abla/process/time"
+import "abla/text"
+
+private fun printerNativeConfigValid(path: string,size: int,maximum: int,timeout: int): bool {
+    if(!path.startsWith("/dev/") || path.size>256 || !utf8Info(path).valid || path.contains("//") || path.contains("/../") || path.contains("/./") || path.endsWith("/..") || path.endsWith("/."))return false
+    for(byte in path)if(byte<32 || byte==127)return false
+    size>=1 && maximum>=1 && maximum<=8388608 && size<=maximum && timeout>=1 && timeout<=300000
+}
+private fun printerNativeOpenError(error: NetworkError): PrinterSendResult = PrinterSendResult(false,"notSent",0,
+    PrinterError(if(error.category=="none")"open_failed"else error.category,"The character device could not be opened or configured."))
+private fun printerNativeOutcome(result: NetworkWriteOutcome,expected: int): PrinterSendResult = printerDeviceSubmission(
+    result.succeeded(),result.written,expected,if(result.error.category=="none")""else result.error.category)
+
+// USB on Linux uses the kernel's usblp character node (/dev/usb/lpN).
+// Any explicitly configured character device may be used, e.g. /dev/null
+// for a local non-printer acceptance fixture. No node discovery or shell I/O.
+class DevicePrinterTransport(val path: string,val maximumBytes: int=1048576): PrinterTransport {
+    fun send(contents: string,timeoutMilliseconds: int): PrinterSendResult {
+        if(!printerNativeConfigValid(this.path,contents.size,this.maximumBytes,timeoutMilliseconds))return PrinterSendResult(false,"notSent",0,PrinterError("invalid_config","Use an absolute /dev character-device path, bounded payload and timeout."))
+        val deadline=monotonicMilliseconds()+timeoutMilliseconds
+        var connection=deviceOpen(this.path)
+        if(!connection.opened())return printerNativeOpenError(connection.error)
+        val result=connection.writeUntil(contents,deadline)
+        connection.close()
+        printerNativeOutcome(result,contents.size)
+    }
+}
+fun usbPrinter(path: string="/dev/usb/lp0",maximumBytes: int=1048576): DevicePrinterTransport = DevicePrinterTransport(path,maximumBytes)
+
+class SerialPrinterTransport(val path: string,val settings: SerialSettings=SerialSettings(),val maximumBytes: int=1048576): PrinterTransport {
+    fun send(contents: string,timeoutMilliseconds: int): PrinterSendResult {
+        if(!printerNativeConfigValid(this.path,contents.size,this.maximumBytes,timeoutMilliseconds))return PrinterSendResult(false,"notSent",0,PrinterError("invalid_config","Use an absolute /dev serial path, bounded payload and timeout."))
+        val deadline=monotonicMilliseconds()+timeoutMilliseconds
+        var connection=serialOpen(this.path,this.settings)
+        if(!connection.opened())return printerNativeOpenError(connection.error)
+        val result=connection.writeUntil(contents,deadline)
+        connection.close()
+        printerNativeOutcome(result,contents.size)
+    }
+}

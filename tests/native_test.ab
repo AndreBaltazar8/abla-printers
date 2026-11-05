@@ -1,0 +1,21 @@
+// Requires the released API; keep outside the 0.2.45 core test target.
+import "../src/native.ab"
+import "abla/serial"
+import "abla/io"
+fun main: int {
+    val job=printerJob().text("Native device fixture").feed(1)
+    val device=DevicePrinterTransport("/dev/null")
+    val accepted=printerSendEscPos(job,device)
+    if(!accepted.succeeded || accepted.outcome!="submitted" || accepted.bytesWritten!=encodeEscPos(job).bytes.size)return 1
+    val missing=DevicePrinterTransport("/dev/abla-printers-missing-device")
+    val refused=printerSendEscPos(job,missing)
+    if(refused.succeeded || refused.outcome!="notSent" || refused.bytesWritten!=0)return 2
+    val ordinary=DevicePrinterTransport("README.md")
+    if(printerSendEscPos(job,ordinary).error.code!="invalid_config")return 3
+    // A character device without termios must not receive serial print bytes.
+    val nonSerial=SerialPrinterTransport("/dev/null",SerialSettings())
+    val unconfigured=printerSendEscPos(job,nonSerial)
+    if(unconfigured.succeeded || unconfigured.outcome!="notSent" || unconfigured.bytesWritten!=0)return 4
+    println("PASS native adapters: character-device acceptance, missing/invalid path, non-tty refusal; no hardware")
+    0
+}

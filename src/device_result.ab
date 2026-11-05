@@ -1,0 +1,10 @@
+import "types.ab"
+
+// A device may accept every byte and then time out waiting for its final
+// readiness/drain acknowledgement. That remains unknown, never submitted.
+fun printerDeviceSubmission(completed: bool,written: int,expected: int,code: string="",message: string=""): PrinterSendResult {
+    if(expected<1 || written<0 || written>expected)return PrinterSendResult(false,"unknown",if(written<0)0 else if(written>expected)expected else written,PrinterError("invalid_write_result","The native writer returned an inconsistent byte count."))
+    if(completed && written==expected)return PrinterSendResult(true,"submitted",written)
+    val error=if(code=="")"incomplete_write"else code
+    PrinterSendResult(false,if(written==0)"notSent"else"unknown",written,PrinterError(error,if(message=="")"The device did not complete the submission; do not automatically replay it."else message))
+}

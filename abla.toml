@@ -2,3 +2,6 @@ name = "abla-printers"
 version = "0.1.0"
 entry = "src/printers.ab"
 visibility = "imports"
+
+[exports]
+native = "src/native.ab"

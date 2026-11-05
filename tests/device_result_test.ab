@@ -1,0 +1,19 @@
+import "../src/device_result.ab"
+import "../src/types.ab"
+import "abla/io"
+fun main: int {
+    val empty=printerDeviceSubmission(false,0,12,"permission-denied")
+    if(empty.succeeded || empty.outcome!="notSent" || empty.bytesWritten!=0)return 1
+    val partial=printerDeviceSubmission(false,5,12,"timeout")
+    if(partial.succeeded || partial.outcome!="unknown" || partial.bytesWritten!=5 || partial.error.code!="timeout")return 2
+    val drain=printerDeviceSubmission(false,12,12,"timeout")
+    if(drain.succeeded || drain.outcome!="unknown" || drain.bytesWritten!=12)return 3
+    val complete=printerDeviceSubmission(true,12,12)
+    if(!complete.succeeded || complete.outcome!="submitted" || complete.bytesWritten!=12)return 4
+    val contradictory=printerDeviceSubmission(true,5,12)
+    if(contradictory.succeeded || contradictory.outcome!="unknown" || contradictory.bytesWritten!=5)return 5
+    val invalid=printerDeviceSubmission(true,13,12)
+    if(invalid.succeeded || invalid.outcome!="unknown" || invalid.error.code!="invalid_write_result")return 6
+    println("PASS native submission mapping: 6 checks, including final drain timeout with all bytes written")
+    0
+}
