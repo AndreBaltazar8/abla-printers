@@ -41,3 +41,20 @@ firmware, complete XML-schema validation, printer status, or fiscal validation.
 Real cutter/drawer behavior, model compatibility, QR scan quality, and paper
 output wait for a later hardware purchase. No device discovery or hardware
 configuration was performed.
+
+## Published package checks
+
+Public core CI passed on
+[`30f9c81`](https://github.com/AndreBaltazar8/abla-printers/commit/30f9c81eed48b483de90b26e3b9a4395a300c960)
+with released ablac 0.2.45:
+[CI run 42061761479](https://github.com/AndreBaltazar8/abla-printers/actions/runs/42061761479).
+It builds and runs the encoders, outcome controls, TCP and HTTP simulators,
+and examples, then independently parses the SOAP example with xmllint.
+
+A fresh external consumer on the same released compiler resolved
+`github("AndreBaltazar8/abla-printers")` from GitHub to that exact revision,
+built the complete README example with its own package and compiler caches,
+and printed `Encoded 153 bytes`. No native subpath was imported and no printer
+connection was attempted. Its lock digest was
+`2c083a503a4c6851b4452a89e5cee946a3136047`; the lock and raw log are retained
+under local `build/validation/package-consumer045.*`.
