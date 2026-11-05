@@ -1,0 +1,10 @@
+import "../src/printers.ab"
+import "abla/io"
+fun main: int {
+    val job=printerJob().text("ação € <&> \"Teste\"",bold=true)
+        .text("Segunda linha").qr("ATCUD:TEST-1&literal\\x1b").feed(3).cut().drawer()
+    val xml=eposSoapEnvelope(job,printer58mm())
+    if(!xml.succeeded){eprintln(xml.error.message);return 1}
+    print(xml.bytes)
+    0
+}

@@ -60,7 +60,7 @@ fun main: int {
     check(!encodeEscPos(printerJob().text("X"),EscPosProfile(maximumBytes=8)).succeeded,"output limit refuses ratherthan truncates")
     check(!encodeEscPos(PrinterJob(null,PrinterOperation("text","x"),1)).succeeded,"malformed persistent list refused")
     val xml=eposPrintXml(printerJob().text("A<&\"'",bold=true).feed(2).qr("ATCUD:\\x1b&X").cut().drawer())
-    val expected="<epos-print xmlns=\"http://www.epson-pos.com/schemas/2011/03/epos-print\"><text lang=\"en\" font=\"font_a\" align=\"left\" em=\"true\" width=\"1\" height=\"1\">A&lt;&amp;&quot;&apos;&#10;</text><feed line=\"2\"/><symbol type=\"qrcode_model_2\" level=\"level_m\" width=\"4\" align=\"center\">ATCUD:\\\\x1b&amp;X</symbol><cut type=\"feed\"/><pulse drawer=\"drawer_1\" time=\"pulse_100\"/></epos-print>"
+    val expected="<epos-print xmlns=\"http://www.epson-pos.com/schemas/2011/03/epos-print\"><text lang=\"en\"/><text font=\"font_a\" align=\"left\" em=\"true\" width=\"1\" height=\"1\">A&lt;&amp;&quot;&apos;&#10;</text><feed line=\"2\"/><symbol type=\"qrcode_model_2\" level=\"level_m\" width=\"4\" align=\"center\">ATCUD:\\\\x1b&amp;X</symbol><cut type=\"feed\"/><pulse drawer=\"drawer_1\" time=\"pulse_100\"/></epos-print>"
     check(xml.succeeded && xml.bytes==expected,"ePOS complete XML golden incl attribute/text/QR escape layers")
     check(eposPrintXml(printerJob().text("ação €")).bytes.contains("ação €&#10;"),"ePOS keeps UTF8 ratherthan printer codepage bytes")
     check(!eposPrintXml(printerJob().qr("test",moduleSize=2)).succeeded,"ePOS has its own supported module range")

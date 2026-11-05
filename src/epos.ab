@@ -37,7 +37,7 @@ fun eposPrintXml(job: PrinterJob,profile: EscPosProfile=EscPosProfile()): Printe
     val ops=printerOperations(job)
     if(!ops.succeeded)return printerEncodeFailure("invalid_job","A job must be a bounded immutable operation list.")
     val out=byteBuffer()
-    out.appendText("<epos-print xmlns=\"http://www.epson-pos.com/schemas/2011/03/epos-print\">")
+    out.appendText("<epos-print xmlns=\"http://www.epson-pos.com/schemas/2011/03/epos-print\"><text lang=\"en\"/>")
     var index=ops.items.size-1
     while(index>=0){
         val op=ops.items[index]
@@ -47,7 +47,7 @@ fun eposPrintXml(job: PrinterJob,profile: EscPosProfile=EscPosProfile()): Printe
             if(!text.succeeded)return text
             val width=profile.width/(if(op.doubleWidth)2 else 1)
             if(width<1)return printerEncodeFailure("invalid_width","The profile has no room for double-width text.")
-            out.appendText("<text lang=\"en\" font=\"font_a\" align=\""+op.align+"\" em=\""+(if(op.bold)"true"else"false")+"\" width=\""+(if(op.doubleWidth)"2"else"1")+"\" height=\""+(if(op.doubleHeight)"2"else"1")+"\">"+printerXmlText(printerWrappedUnicode(op.value,width))+"</text>")
+            out.appendText("<text font=\"font_a\" align=\""+op.align+"\" em=\""+(if(op.bold)"true"else"false")+"\" width=\""+(if(op.doubleWidth)"2"else"1")+"\" height=\""+(if(op.doubleHeight)"2"else"1")+"\">"+printerXmlText(printerWrappedUnicode(op.value,width))+"</text>")
         }else if(op.kind=="feed"){
             if(op.amount<1 || op.amount>255)return printerEncodeFailure("invalid_feed","Feed must be 1..255 lines.")
             out.appendText("<feed line=\"${op.amount}\"/>")
