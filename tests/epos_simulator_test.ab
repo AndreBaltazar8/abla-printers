@@ -1,0 +1,79 @@
+import "../src/printers.ab"
+import "abla/http"
+import "abla/net"
+import "abla/io"
+import "abla/process/time"
+import "abla/sys/linux"
+import "abla/sys/linux/process"
+
+// Exact golden fixture, not printer firmware or fiscal validation.
+fun simulatorGoldenSoap(): string = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\"><s:Body><epos-print xmlns=\"http://www.epson-pos.com/schemas/2011/03/epos-print\"><text lang=\"en\"/><text font=\"font_a\" align=\"left\" em=\"false\" width=\"1\" height=\"1\">ação € &amp; teste&#10;</text><symbol type=\"qrcode_model_2\" level=\"level_m\" width=\"4\" align=\"center\">ATCUD:TEST-1&amp;literal\\\\x1b</symbol><cut type=\"feed\"/><pulse drawer=\"drawer_1\" time=\"pulse_100\"/></epos-print></s:Body></s:Envelope>"
+fun simulatorReadRequest(var peer: TcpConnection): string {
+    if(!peer.setNonblocking())return ""
+    var input=""
+    val start=monotonicMilliseconds()
+    while(monotonicMilliseconds()-start<2000 && input.size<65536){
+        val ready=peer.poll(50)
+        if(ready.failed())return ""
+        if(ready.readable){
+            val got=peer.readResult(4096)
+            if(got.failed() || got.reachedEof())return ""
+            input=input+got.bytes
+            val head=httpHeaderEnd(input)
+            if(head>=0){
+                val parsed=httpParseRequest(input)
+                val length=httpDecimalLength(parsed.header("Content-Length"),32768)
+                if(length<0 || parsed.header("Transfer-Encoding")!="")return ""
+                if(input.size>=head+length)return if(input.size==head+length)input else ""
+            }
+        }
+    }
+    ""
+}
+fun serveEposFixture(var listener: TcpListener): int {
+    linuxSyscall2(157,1,9)
+    var seen=0
+    while(seen<3){
+        var peer=listener.accept()
+        if(peer.descriptor<0)return 20
+        val raw=simulatorReadRequest(peer)
+        val request=httpParseRequest(raw)
+        val valid=request.method=="POST" && request.path=="/cgi-bin/epos/service.cgi" && request.queryParameter("devid")=="local_printer" && request.queryParameter("timeout")=="1000" && request.header("Content-Type")=="text/xml; charset=utf-8" && request.header("SOAPAction")=="\"\"" && request.body==simulatorGoldenSoap()
+        val status=if(valid)200 else 400
+        val body="<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\"><s:Body><response xmlns=\"http://www.epson-pos.com/schemas/2011/03/epos-print\" success=\""+(if(valid)"true"else"false")+"\" code=\""+(if(valid)""else"EPTR_PARAMETER")+"\" status=\"0\"/></s:Body></s:Envelope>"
+        val response=HttpResponse(status,[HttpHeader("Content-Type","text/xml; charset=utf-8")],body)
+        val sent=peer.writeNetwork(response.render(),1000)
+        peer.close()
+        if(!sent.succeeded())return 21
+        seen=seen+1
+    }
+    listener.close()
+    0
+}
+fun main: int {
+    var listener=tcpListenAddress(ipv4SocketAddress("127.0.0.1",0),4)
+    val port=listener.localPort()
+    if(port<1)return 1
+    val child=linuxSyscall0(57)
+    if(child==0){val status=serveEposFixture(listener);linuxSyscall1(60,status);return status}
+    if(child<0){listener.close();return 2}
+    val xml=eposSoapEnvelope(printerJob().text("ação € & teste").qr("ATCUD:TEST-1&literal\\x1b").cut().drawer())
+    if(!xml.succeeded || xml.bytes!=simulatorGoldenSoap()){linuxSyscall2(62,child,9);linuxWaitProcess(child);return 3}
+    val client=httpIpv4Client("127.0.0.1:$port","127.0.0.1",port,65536,1000,2000)
+    val path="/cgi-bin/epos/service.cgi?devid=local_printer&timeout=1000"
+    val headers=[HttpHeader("Content-Type","text/xml; charset=utf-8"),HttpHeader("SOAPAction","\"\"")]
+    val good=client.send(httpPost(path,xml.bytes,headers))
+    val badXml=client.send(httpPost(path,"<broken",headers))
+    val badHeader=client.send(httpPost(path,xml.bytes,[HttpHeader("Content-Type","application/json")]))
+    listener.close()
+    val start=monotonicMilliseconds()
+    var result=-1
+    while(result<0 && monotonicMilliseconds()-start<5000){val waited=linuxWaitProcess(child,true);if(waited.status>=0)result=waited.status else sleep(10)}
+    if(result<0){linuxSyscall2(62,child,9);linuxWaitProcess(child);return 4}
+    if(result!=0)return result
+    if(!good.succeeded || !good.complete || good.response.status!=200 || !good.response.body.contains("success=\"true\""))return 5
+    if(!badXml.complete || badXml.response.status!=400 || !badXml.response.body.contains("EPTR_PARAMETER"))return 6
+    if(!badHeader.complete || badHeader.response.status!=400)return 7
+    println("PASS ePOS SOAP/HTTP stand-in: exact UTF8/XML/QR/cut/drawer fixture accepted; malformed XML and wrong headers refused")
+    0
+}

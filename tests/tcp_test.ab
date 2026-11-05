@@ -1,6 +1,7 @@
 import "../src/printers.ab"
 import "abla/io"
 import "abla/net"
+import "abla/bytes"
 import "abla/process/time"
 import "abla/sys/linux"
 import "abla/sys/linux/process"
@@ -31,7 +32,15 @@ fun fakePrinter(var listener: TcpListener,expected: string,stall: bool): int {
             val r=peer.readResult(65536)
             received=received+r.bytes
             if(received.size>expected.size){peer.close();return 22}
-            if(r.reachedEof()){peer.close();return if(received==expected)0 else 23}
+            if(r.reachedEof()){
+                peer.close()
+                if(received!=expected)return 23
+                val codepage=byteEncode(27)+"t"+byteEncode(19)
+                val cut=byteEncode(29)+"VB"+byteEncode(0)
+                val drawer=byteEncode(27)+"p"+byteEncode(0)+byteEncode(50)+byteEncode(250)
+                if(!received.startsWith(byteEncode(27)+"@") || !received.contains(codepage) || !received.endsWith(cut+drawer))return 26
+                return 0
+            }
             if(r.failed()){peer.close();return 24}
         }
     }
@@ -60,12 +69,14 @@ fun roundtrip(port: int,payload: string,stall: bool): int {
     0
 }
 fun main: int {
-    val encoded=encodeEscPos(printerJob().text("ação €").qr("ATCUD:TEST-1").feed(3).cut())
+    val encoded=encodeEscPos(printerJob().text("ação €").qr("ATCUD:TEST-1").feed(3).cut().drawer())
     if(!encoded.succeeded)return 1
     // Bind loopback9100 ourselves: a busy port fails the test; never connect
     // to an existing service and never discover or contact a real printer.
     val normal=roundtrip(9100,encoded.bytes,false)
     if(normal!=0){eprintln("fake9100 failed: $normal");return normal}
+    val omitted=encodeEscPos(printerJob().text("ação €").qr("ATCUD:TEST-1").feed(3).cut())
+    if(roundtrip(0,omitted.bytes,false)!=26)return 35
     val stalled=roundtrip(0,"x".repeat(8388608),true)
     if(stalled!=0){eprintln("stalled partial write failed: $stalled");return stalled}
     val refused=TcpPrinterTransport(TcpPrinterConfig("127.0.0.1",0)).send("x",100)
