@@ -7,6 +7,7 @@ import "abla/bytes"
 import "abla/process/time"
 import "abla/sys/linux"
 import "abla/unsafe/memory"
+import "abla/unsafe/memory/raw"
 
 private trusted noescape extern:"c" fun posix_openpt(flags: i32): i32
 private trusted noescape extern:"c" fun grantpt(descriptor: i32): i32

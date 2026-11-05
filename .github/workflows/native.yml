@@ -1,0 +1,21 @@
+name: Native device and serial adapters
+# The APIs are targeted for 0.2.47. Keep this explicit/manual until that release
+# exists; core push/PR CI remains pinned to and tested with released0.2.45.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native:
+    strategy:
+      matrix:
+        os: [ubuntu-24.04, macos-14]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+      - uses: AndreBaltazar8/setup-abla@b21e1290aa49862e7bf187dc84b6b3511f4b571e # v1.0.0
+        with:
+          version: '0.2.47'
+      - name: Native character-device and PTY simulations (no hardware)
+        run: make test-native COMPILER=ablac

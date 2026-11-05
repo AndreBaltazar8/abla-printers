@@ -79,8 +79,30 @@ no DNS, printer discovery or automatic replay. Raw TCP is unencrypted; configure
 an appropriate printer network. TCP payloads default to at most 1 MiB and can be
 configured up to 8 MiB. This transport currently targets hosted Linux.
 
-USB/serial implementation status will be recorded here after the standard-library
-device API lands. No subprocess transport is used.
+USB and serial use the explicitly imported `native` submodule:
+
+```abla
+import github("AndreBaltazar8/abla-printers/native")
+import "abla/serial"
+
+val usb = usbPrinter("/dev/usb/lp0")
+val serial = SerialPrinterTransport(
+    "/dev/ttyUSB0", SerialSettings(baud=19200)
+)
+```
+
+The core entry remains compatible with 0.2.45. The native submodule requires
+the new `abla/device` and `abla/serial` standard-library APIs, targeted for
+0.2.47; its current Linux verification uses the upstream frozen API snapshot.
+The separate native workflow is manual until that compiler release is available.
+It is not part of the 0.2.45 core CI result.
+
+Linux USB printers use the kernel usblp character node. Serial settings are host
+settings and must match the printer. Raw mode and eight data bits are required;
+invalid settings fail before opening the device. The native writer waits for
+final readiness before closing: a timeout can report every byte written while
+the outcome is still `unknown`. Neither that readiness nor `/dev/null` fixture
+acceptance establishes paper output. No subprocess transport is used.
 
 ## Epson ePOS-Print XML
 
@@ -102,12 +124,17 @@ specify an explicit even off-time. Unsupported settings fail explicitly.
 CI is pinned to released ablac 0.2.45. Run `make test COMPILER=ablac` in the
 compiler's toolchain environment. Tests use independent ESC/POS and XML goldens,
 Portuguese/codepage vectors, wrapping, input rejection, immutable jobs and an
-actual loopback fake printer on TCP 9100. A large stalled submission checks that
+actual loopback fake printer on TCP 9100, checking code page, cut and drawer
+commands and rejecting an omitted expected command. A large stalled submission checks that
 a partial write times out with its byte count and an unknown outcome. A busy
-9100 test port fails rather than connecting to another service.
+9100 test port fails rather than connecting to another service. A SOAP/HTTP ePOS
+stand-in accepts an independent golden document and rejects malformed XML or
+wrong headers; generated XML also goes through an independent XML parser.
+The stand-in is a bounded test fixture, not a firmware or fiscal validator.
 
-No hardware is required or claimed. Cutter, drawer, model compatibility, QR
-scan quality and paper output require tests with the intended device.
+No hardware was bought or used. Character-device and PTY fixtures cover native
+submission without a printer. Cutter, drawer, model compatibility, QR scan
+quality and paper-output acceptance are deferred until a later hardware purchase.
 
 ## References
 
