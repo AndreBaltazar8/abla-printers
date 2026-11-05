@@ -29,7 +29,7 @@ fun printerTextBytes(value: string,codepage: string): PrinterEncodeResult {
         }
         offset=offset+length
     }
-    PrinterEncodeResult(true,out.toString())
+    PrinterEncodeResult(true,out.toText())
 }
 fun printerAlignment(value: string): int = if(value=="left")0 else if(value=="center")1 else if(value=="right")2 else -1
 fun printerProfileValid(profile: EscPosProfile): bool = profile.width>=1 && profile.width<=128 &&

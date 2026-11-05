@@ -12,7 +12,7 @@ fun hex(bytes: string): string {
     val digits="0123456789abcdef"
     val out=byteBuffer()
     for(b in bytes){out.appendText(byteEncode(digits[b/16]));out.appendText(byteEncode(digits[b%16]))}
-    out.toString()
+    out.toText()
 }
 class CapturePrinter(var calls: int=0,var received: string=""): PrinterTransport {
     fun send(contents: string,timeoutMilliseconds: int): PrinterSendResult {
@@ -72,7 +72,8 @@ fun main: int {
     val before=capture.calls
     val rejected=printerSendEscPos(printerJob().text(byteEncode(27)).drawer(),capture)
     check(!rejected.succeeded && rejected.outcome=="notSent" && capture.calls==before,"all encoding validates before any transport effect")
-    check(!printerSendEscPos(first,capture,timeoutMilliseconds=0).succeeded && capture.calls==before,"invalid timeout does not call transport")
+    val captureTransport: PrinterTransport=capture
+    check(!printerSendEscPos(first,captureTransport,timeoutMilliseconds=0).succeeded && capture.calls==before,"invalid timeout does not call transport")
     println("PASS encoder golden/control tests: $checked checks")
     0
 }

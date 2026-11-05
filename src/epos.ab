@@ -18,7 +18,7 @@ private fun printerXmlText(value: string,escapeBackslash: bool=false): string {
         else out.appendText(byteEncode(byte))
         at=at+1
     }
-    out.toString()
+    out.toText()
 }
 private fun printerWrappedUnicode(value: string,width: int): string {
     val out=byteBuffer()
@@ -30,7 +30,7 @@ private fun printerWrappedUnicode(value: string,width: int): string {
         at=at+length
     }
     if(value.size==0 || value[value.size-1]!=10)out.appendText("\n")
-    out.toString()
+    out.toText()
 }
 fun eposPrintXml(job: PrinterJob,profile: EscPosProfile=EscPosProfile()): PrinterEncodeResult {
     if(!printerProfileValid(profile))return printerEncodeFailure("invalid_profile","Invalid width, codepage or output limit.")
@@ -68,7 +68,7 @@ fun eposPrintXml(job: PrinterJob,profile: EscPosProfile=EscPosProfile()): Printe
     }
     out.appendText("</epos-print>")
     if(out.size()>profile.maximumBytes)return printerEncodeFailure("output_limit","XML job exceeds the profile's output limit.")
-    PrinterEncodeResult(true,out.toString())
+    PrinterEncodeResult(true,out.toText())
 }
 fun eposSoapEnvelope(job: PrinterJob,profile: EscPosProfile=EscPosProfile()): PrinterEncodeResult {
     val xml=eposPrintXml(job,profile)

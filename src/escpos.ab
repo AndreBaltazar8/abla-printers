@@ -53,7 +53,7 @@ fun encodeEscPos(job: PrinterJob,profile: EscPosProfile=EscPosProfile()): Printe
         index=index-1
     }
     if(out.size()>profile.maximumBytes)return printerEncodeFailure("output_limit","Encoded job exceeds the profile's output limit.")
-    PrinterEncodeResult(true,out.toString())
+    PrinterEncodeResult(true,out.toText())
 }
 fun printerSendEscPos(job: PrinterJob,transport: PrinterTransport,profile: EscPosProfile=EscPosProfile(),timeoutMilliseconds: int=5000): PrinterSendResult {
     val encoded=encodeEscPos(job,profile)

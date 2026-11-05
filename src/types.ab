@@ -50,16 +50,15 @@ fun printerEncodeFailure(code: string,message: string): PrinterEncodeResult = Pr
 class PrinterOperations(val succeeded: bool,val items: array<PrinterOperation>)
 fun printerOperations(job: PrinterJob): PrinterOperations {
     val result: array<PrinterOperation> = []
-    var node: PrinterJob? = job
-    var valid=true
-    while(node!=null && valid){
+    var node = job
+    while(true){
         val op=node.operation
         val prior=node.previous
-        if(op==null){
-            valid=prior==null && node.count==0
-            node=null
-        }else if(prior==null || node.count!=prior.count+1 || result.size>=1024){valid=false}
-        else{result.append(op);node=prior}
+        if(op==null)return PrinterOperations(prior==null && node.count==0,result)
+        if(prior==null)return PrinterOperations(false,result)
+        if(node.count!=prior.count+1 || result.size>=1024)return PrinterOperations(false,result)
+        result.append(op)
+        node=prior
     }
-    PrinterOperations(valid,result)
+    PrinterOperations(false,result)
 }
