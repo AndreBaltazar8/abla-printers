@@ -1,0 +1,76 @@
+import "text.ab"
+
+private fun printerXmlText(value: string,escapeBackslash: bool=false): string {
+    val out=byteBuffer()
+    var at=0
+    while(at<value.size){
+        val byte=value[at]
+        if(byte==38)out.appendText("&amp;")
+        else if(byte==60)out.appendText("&lt;")
+        else if(byte==62)out.appendText("&gt;")
+        else if(byte==34)out.appendText("&quot;")
+        else if(byte==39)out.appendText("&apos;")
+        else if(byte==10)out.appendText("&#10;")
+        else if(byte==92 && escapeBackslash)out.appendText("\\\\")
+        else out.appendText(byteEncode(byte))
+        at=at+1
+    }
+    out.toString()
+}
+private fun printerWrappedUnicode(value: string,width: int): string {
+    val out=byteBuffer()
+    var column=0;var at=0
+    while(at<value.size){
+        val length=utf8SequenceLength(value[at])
+        if(value[at]==10){out.appendText("\n");column=0}
+        else{if(column==width){out.appendText("\n");column=0};out.appendText(value.slice(at,at+length));column=column+1}
+        at=at+length
+    }
+    if(value.size==0 || value[value.size-1]!=10)out.appendText("\n")
+    out.toString()
+}
+fun eposPrintXml(job: PrinterJob,profile: EscPosProfile=EscPosProfile()): PrinterEncodeResult {
+    if(!printerProfileValid(profile))return printerEncodeFailure("invalid_profile","Invalid width, codepage or output limit.")
+    val ops=printerOperations(job)
+    if(!ops.succeeded)return printerEncodeFailure("invalid_job","A job must be a bounded immutable operation list.")
+    val out=byteBuffer()
+    out.appendText("<epos-print xmlns=\"http://www.epson-pos.com/schemas/2011/03/epos-print\">")
+    var index=ops.items.size-1
+    while(index>=0){
+        val op=ops.items[index]
+        if(op.kind=="text"){
+            if(printerAlignment(op.align)<0)return printerEncodeFailure("invalid_alignment","Choose left, center or right.")
+            val text=printerTextBytes(op.value,profile.codepage)
+            if(!text.succeeded)return text
+            val width=profile.width/(if(op.doubleWidth)2 else 1)
+            if(width<1)return printerEncodeFailure("invalid_width","The profile has no room for double-width text.")
+            out.appendText("<text lang=\"en\" font=\"font_a\" align=\""+op.align+"\" em=\""+(if(op.bold)"true"else"false")+"\" width=\""+(if(op.doubleWidth)"2"else"1")+"\" height=\""+(if(op.doubleHeight)"2"else"1")+"\">"+printerXmlText(printerWrappedUnicode(op.value,width))+"</text>")
+        }else if(op.kind=="feed"){
+            if(op.amount<1 || op.amount>255)return printerEncodeFailure("invalid_feed","Feed must be 1..255 lines.")
+            out.appendText("<feed line=\"${op.amount}\"/>")
+        }else if(op.kind=="qr"){
+            if(!printerQrValid(op) || printerAlignment(op.align)<0 || op.amount<3)return printerEncodeFailure("invalid_qr","ePOS QR needs valid data and a module width of 3..8.")
+            val level=if(op.pin==48)"level_l"else if(op.pin==49)"level_m"else if(op.pin==50)"level_q"else"level_h"
+            // ePOS applies its own backslash escape processing inside symbols.
+            out.appendText("<symbol type=\"qrcode_model_2\" level=\"$level\" width=\"${op.amount}\" align=\"${op.align}\">"+printerXmlText(op.value,true)+"</symbol>")
+        }else if(op.kind=="cut"){
+            if(!profile.supportsCut)return printerEncodeFailure("unsupported_cut","This profile has no cutter.")
+            out.appendText("<cut type=\"feed\"/>")
+        }else if(op.kind=="drawer"){
+            if(!profile.supportsDrawer || !printerDrawerValid(op) || op.extra!=0 || op.amount%100!=0)return printerEncodeFailure("unsupported_xml_pulse","ePOS supports 100..500 ms presets, with no explicit off-time.")
+            out.appendText("<pulse drawer=\""+(if(op.pin==2)"drawer_1"else"drawer_2")+"\" time=\"pulse_${op.amount}\"/>")
+        }else return printerEncodeFailure("unknown_operation","Unknown printer operation.")
+        if(out.size()>profile.maximumBytes)return printerEncodeFailure("output_limit","XML job exceeds the profile's output limit.")
+        index=index-1
+    }
+    out.appendText("</epos-print>")
+    if(out.size()>profile.maximumBytes)return printerEncodeFailure("output_limit","XML job exceeds the profile's output limit.")
+    PrinterEncodeResult(true,out.toString())
+}
+fun eposSoapEnvelope(job: PrinterJob,profile: EscPosProfile=EscPosProfile()): PrinterEncodeResult {
+    val xml=eposPrintXml(job,profile)
+    if(!xml.succeeded)return xml
+    val bytes="<?xml version=\"1.0\" encoding=\"UTF-8\"?><s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\"><s:Body>"+xml.bytes+"</s:Body></s:Envelope>"
+    if(bytes.size>profile.maximumBytes)return printerEncodeFailure("output_limit","SOAP job exceeds the profile's output limit.")
+    PrinterEncodeResult(true,bytes)
+}

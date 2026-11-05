@@ -1,0 +1,38 @@
+import "types.ab"
+import "abla/net"
+import "abla/process/time"
+
+class TcpPrinterConfig(val address: string,val port: int=9100,val maximumBytes: int=1048576)
+class TcpPrinterTransport(val config: TcpPrinterConfig): PrinterTransport {
+    fun send(contents: string,timeoutMilliseconds: int): PrinterSendResult {
+        if(contents.size<1 || contents.size>this.config.maximumBytes || this.config.maximumBytes<1 || this.config.maximumBytes>8388608)return PrinterSendResult(false,"notSent",0,PrinterError("output_limit","TCP payload must fit the configured 1..8 MiB limit."))
+        if(timeoutMilliseconds<1 || timeoutMilliseconds>300000 || this.config.port<1 || this.config.port>65535 || linuxIpv4Octets(this.config.address).size!=4)return PrinterSendResult(false,"notSent",0,PrinterError("invalid_config","Use a numeric IPv4 address, port and bounded timeout."))
+        val start=monotonicMilliseconds()
+        var connection=tcpConnectIpv4(this.config.address,this.config.port,if(timeoutMilliseconds>10000)10000 else timeoutMilliseconds)
+        if(connection.descriptor<0)return PrinterSendResult(false,"notSent",0,PrinterError("connect_failed","The printer connection could not be established."))
+        if(!connection.setNonblocking()){
+            connection.close()
+            return PrinterSendResult(false,"notSent",0,PrinterError("nonblocking_failed","Cannot bound printer writes."))
+        }
+        var offset=0
+        var error=""
+        while(offset<contents.size && error==""){
+            val remaining=timeoutMilliseconds-(monotonicMilliseconds()-start)
+            if(remaining<=0)error="timeout"
+            else{
+                val ready=connection.poll(remaining,false,true)
+                if(ready.failed())error="poll_failed"
+                else if(ready.closed && !ready.writable)error="closed"
+                else if(ready.timedOut)error="timeout"
+                else if(ready.writable){
+                    val write=connection.writeResult(contents.slice(offset,contents.size))
+                    offset=offset+write.written
+                    if(write.failed() && write.errorCode!=11 && write.errorCode!=35)error="write_failed"
+                }
+            }
+        }
+        connection.close()
+        if(offset==contents.size)return PrinterSendResult(true,"submitted",offset)
+        PrinterSendResult(false,if(offset==0)"notSent"else"unknown",offset,PrinterError(error,"The complete job was not submitted. Do not automatically replay it."))
+    }
+}

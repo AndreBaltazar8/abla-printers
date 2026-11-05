@@ -1,0 +1,61 @@
+import "text.ab"
+
+fun encodeEscPos(job: PrinterJob,profile: EscPosProfile=EscPosProfile()): PrinterEncodeResult {
+    if(!printerProfileValid(profile))return printerEncodeFailure("invalid_profile","Invalid width, codepage or output limit.")
+    val ops=printerOperations(job)
+    if(!ops.succeeded)return printerEncodeFailure("invalid_job","A job must be a bounded immutable operation list.")
+    val out=byteBuffer()
+    out.appendText(byteEncode(27)+"@"+byteEncode(27)+"M"+byteEncode(0))
+    if(profile.codepage=="pc858")out.appendText(byteEncode(27)+"t"+byteEncode(19))
+    // Reset international substitutions; the profile's codepage owns glyphs.
+    out.appendText(byteEncode(27)+"R"+byteEncode(0))
+    var index=ops.items.size-1
+    while(index>=0){
+        val op=ops.items[index]
+        if(op.kind=="text"){
+            val align=printerAlignment(op.align)
+            if(align<0)return printerEncodeFailure("invalid_alignment","Choose left, center or right.")
+            val encoded=printerTextBytes(op.value,profile.codepage)
+            if(!encoded.succeeded)return encoded
+            out.appendText(byteEncode(27)+"a"+byteEncode(align)+byteEncode(27)+"E"+byteEncode(if(op.bold)1 else 0)+byteEncode(29)+"!"+byteEncode((if(op.doubleWidth)16 else 0)+(if(op.doubleHeight)1 else 0)))
+            val width=profile.width/(if(op.doubleWidth)2 else 1)
+            if(width<1)return printerEncodeFailure("invalid_width","The profile has no room for double-width text.")
+            var column=0;var offset=0
+            while(offset<encoded.bytes.size){
+                val byte=encoded.bytes[offset]
+                if(byte==10){out.appendText("\n");column=0}
+                else{if(column==width){out.appendText("\n");column=0};out.appendText(byteEncode(byte));column=column+1}
+                offset=offset+1
+            }
+            if(encoded.bytes.size==0 || encoded.bytes[encoded.bytes.size-1]!=10)out.appendText("\n")
+        }else if(op.kind=="feed"){
+            if(op.amount<1 || op.amount>255)return printerEncodeFailure("invalid_feed","Feed must be 1..255 lines.")
+            out.appendText(byteEncode(27)+"d"+byteEncode(op.amount))
+        }else if(op.kind=="qr"){
+            if(!printerQrValid(op) || printerAlignment(op.align)<0)return printerEncodeFailure("invalid_qr","Invalid QR data, size, correction level or alignment.")
+            out.appendText(byteEncode(27)+"a"+byteEncode(printerAlignment(op.align)))
+            out.appendText(byteEncode(29)+"(k"+byteEncode(4)+byteEncode(0)+"1A2"+byteEncode(0))
+            out.appendText(byteEncode(29)+"(k"+byteEncode(3)+byteEncode(0)+"1C"+byteEncode(op.amount))
+            out.appendText(byteEncode(29)+"(k"+byteEncode(3)+byteEncode(0)+"1E"+byteEncode(op.pin))
+            val length=op.value.size+3
+            out.appendText(byteEncode(29)+"(k"+byteEncode(length%256)+byteEncode(length/256)+"1P0"+op.value)
+            out.appendText(byteEncode(29)+"(k"+byteEncode(3)+byteEncode(0)+"1Q0")
+        }else if(op.kind=="cut"){
+            if(!profile.supportsCut)return printerEncodeFailure("unsupported_cut","This profile has no cutter.")
+            out.appendText(byteEncode(29)+"VB"+byteEncode(0))
+        }else if(op.kind=="drawer"){
+            if(!profile.supportsDrawer || !printerDrawerValid(op))return printerEncodeFailure("invalid_drawer","Unsupported drawer or invalid pin/pulse durations.")
+            out.appendText(byteEncode(27)+"p"+byteEncode(if(op.pin==2)0 else 1)+byteEncode(op.amount/2)+byteEncode(if(op.extra==0)250 else op.extra/2))
+        }else return printerEncodeFailure("unknown_operation","Unknown printer operation.")
+        if(out.size()>profile.maximumBytes)return printerEncodeFailure("output_limit","Encoded job exceeds the profile's output limit.")
+        index=index-1
+    }
+    if(out.size()>profile.maximumBytes)return printerEncodeFailure("output_limit","Encoded job exceeds the profile's output limit.")
+    PrinterEncodeResult(true,out.toString())
+}
+fun printerSendEscPos(job: PrinterJob,transport: PrinterTransport,profile: EscPosProfile=EscPosProfile(),timeoutMilliseconds: int=5000): PrinterSendResult {
+    val encoded=encodeEscPos(job,profile)
+    if(!encoded.succeeded)return PrinterSendResult(false,"notSent",0,encoded.error)
+    if(timeoutMilliseconds<1 || timeoutMilliseconds>300000)return PrinterSendResult(false,"notSent",0,PrinterError("invalid_timeout","Timeout must be 1..300000 ms."))
+    transport.send(encoded.bytes,timeoutMilliseconds)
+}

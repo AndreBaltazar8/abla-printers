@@ -1,0 +1,77 @@
+import "../src/printers.ab"
+import "abla/io"
+import "abla/net"
+import "abla/process/time"
+import "abla/sys/linux"
+import "abla/sys/linux/process"
+
+fun waitChild(pid: int,timeout: int=5000): int {
+    val start=monotonicMilliseconds()
+    while(monotonicMilliseconds()-start<timeout){
+        val r=linuxWaitProcess(pid,true)
+        if(r.status>=0)return r.status
+        sleep(10)
+    }
+    linuxSyscall2(62,pid,9)
+    linuxWaitProcess(pid)
+    99
+}
+fun fakePrinter(var listener: TcpListener,expected: string,stall: bool): int {
+    linuxSyscall2(157,1,9)
+    var peer=listener.accept()
+    if(peer.descriptor<0)return 20
+    listener.close()
+    if(stall){sleep(400);peer.close();return 0}
+    var received=""
+    val start=monotonicMilliseconds()
+    while(monotonicMilliseconds()-start<4000){
+        val ready=peer.poll(100)
+        if(ready.failed()){peer.close();return 21}
+        if(ready.readable || ready.closed){
+            val r=peer.readResult(65536)
+            received=received+r.bytes
+            if(received.size>expected.size){peer.close();return 22}
+            if(r.reachedEof()){peer.close();return if(received==expected)0 else 23}
+            if(r.failed()){peer.close();return 24}
+        }
+    }
+    peer.close();25
+}
+fun roundtrip(port: int,payload: string,stall: bool): int {
+    var listener=tcpListenAddress(ipv4SocketAddress("127.0.0.1",port),4)
+    val bound=listener.localPort()
+    if(bound<1)return 30
+    val child=linuxSyscall0(57)
+    if(child==0){
+        val status=fakePrinter(listener,payload,stall)
+        linuxSyscall1(60,status)
+        return status
+    }
+    if(child<0){listener.close();return 31}
+    val start=monotonicMilliseconds()
+    val sent=TcpPrinterTransport(TcpPrinterConfig("127.0.0.1",bound,8388608)).send(payload,if(stall)100 else 1000)
+    listener.close()
+    val status=waitChild(child)
+    if(status!=0)return status
+    if(stall){
+        if(sent.succeeded || sent.bytesWritten<=0 || sent.bytesWritten>=payload.size || sent.outcome!="unknown" || sent.error.code!="timeout")return 32
+        if(monotonicMilliseconds()-start>3000)return 33
+    }else if(!sent.succeeded || sent.outcome!="submitted" || sent.bytesWritten!=payload.size)return 34
+    0
+}
+fun main: int {
+    val encoded=encodeEscPos(printerJob().text("ação €").qr("ATCUD:TEST-1").feed(3).cut())
+    if(!encoded.succeeded)return 1
+    // Bind loopback9100 ourselves: a busy port fails the test; never connect
+    // to an existing service and never discover or contact a real printer.
+    val normal=roundtrip(9100,encoded.bytes,false)
+    if(normal!=0){eprintln("fake9100 failed: $normal");return normal}
+    val stalled=roundtrip(0,"x".repeat(8388608),true)
+    if(stalled!=0){eprintln("stalled partial write failed: $stalled");return stalled}
+    val refused=TcpPrinterTransport(TcpPrinterConfig("127.0.0.1",0)).send("x",100)
+    if(refused.succeeded || refused.outcome!="notSent" || refused.bytesWritten!=0)return 40
+    val wrong=TcpPrinterTransport(TcpPrinterConfig("printer.invalid")).send("x",100)
+    if(wrong.succeeded || wrong.error.code!="invalid_config")return 41
+    println("PASS fakeTCP9100 exact bytes, partial timeout/unknown, invalid config")
+    0
+}

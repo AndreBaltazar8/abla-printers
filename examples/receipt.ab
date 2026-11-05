@@ -1,0 +1,11 @@
+import "../src/printers.ab"
+import "abla/io"
+fun main: int {
+    val job=printerJob().text("Loja exemplo",align="center",bold=true)
+        .text("Total: 12,30 €").text("ATCUD: TEST-1")
+        .qr("ATCUD:TEST-1").feed(3).cut()
+    val result=encodeEscPos(job,printer58mm())
+    if(!result.succeeded){eprintln(result.error.message);return 1}
+    print(result.bytes)
+    0
+}

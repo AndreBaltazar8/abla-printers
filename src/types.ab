@@ -1,0 +1,65 @@
+// Values are plain data. No encoder or transport throws or retries a job.
+class PrinterError(val code: string = "", val message: string = "")
+class PrinterEncodeResult(val succeeded: bool, val bytes: string, val error: PrinterError = PrinterError())
+class PrinterSendResult(
+    val succeeded: bool,
+    val outcome: string, // notSent | submitted | unknown; submitted is not paper confirmation
+    val bytesWritten: int,
+    val error: PrinterError = PrinterError()
+)
+class EscPosProfile(
+    val width: int = 48, // font-A columns, normally 32 for 58 mm, 48 for 80 mm
+    val codepage: string = "pc858",
+    val supportsCut: bool = true,
+    val supportsDrawer: bool = true,
+    val maximumBytes: int = 1048576
+)
+fun printer58mm(): EscPosProfile = EscPosProfile(width=32)
+fun printer80mm(): EscPosProfile = EscPosProfile(width=48)
+
+class PrinterOperation(
+    val kind: string,
+    val value: string = "",
+    val align: string = "left",
+    val bold: bool = false,
+    val doubleWidth: bool = false,
+    val doubleHeight: bool = false,
+    val amount: int = 0,
+    val extra: int = 0,
+    val pin: int = 2
+)
+// Persistent immutable list: appending never mutates the previous job, and
+// there is no public mutable array for an asynchronous sender to observe.
+class PrinterJob(val previous: PrinterJob?, val operation: PrinterOperation?, val count: int)
+fun printerJob(): PrinterJob = PrinterJob(null,null,0)
+fun PrinterJob.text(value: string, align: string="left", bold: bool=false, doubleWidth: bool=false, doubleHeight: bool=false): PrinterJob =
+    PrinterJob(this,PrinterOperation("text",value,align,bold,doubleWidth,doubleHeight),this.count+1)
+fun PrinterJob.feed(lines: int=1): PrinterJob = PrinterJob(this,PrinterOperation("feed",amount=lines),this.count+1)
+fun PrinterJob.qr(value: string,moduleSize: int=4,level: string="M",align: string="center"): PrinterJob =
+    PrinterJob(this,PrinterOperation("qr",value,align,amount=moduleSize,extra=0,pin=if(level=="L")48 else if(level=="M")49 else if(level=="Q")50 else if(level=="H")51 else -1),this.count+1)
+fun PrinterJob.cut(): PrinterJob = PrinterJob(this,PrinterOperation("cut"),this.count+1)
+// Zero off-time selects the protocol's preset/default: ESC/POS uses 500 ms;
+// ePOS exposes no off-time field. A nonzero value is ESC/POS-only.
+fun PrinterJob.drawer(pin: int=2,onMilliseconds: int=100,offMilliseconds: int=0): PrinterJob =
+    PrinterJob(this,PrinterOperation("drawer",amount=onMilliseconds,extra=offMilliseconds,pin=pin),this.count+1)
+
+interface PrinterTransport {
+    fun send(contents: string,timeoutMilliseconds: int): PrinterSendResult
+}
+fun printerEncodeFailure(code: string,message: string): PrinterEncodeResult = PrinterEncodeResult(false,"",PrinterError(code,message))
+class PrinterOperations(val succeeded: bool,val items: array<PrinterOperation>)
+fun printerOperations(job: PrinterJob): PrinterOperations {
+    val result: array<PrinterOperation> = []
+    var node: PrinterJob? = job
+    var valid=true
+    while(node!=null && valid){
+        val op=node.operation
+        val prior=node.previous
+        if(op==null){
+            valid=prior==null && node.count==0
+            node=null
+        }else if(prior==null || node.count!=prior.count+1 || result.size>=1024){valid=false}
+        else{result.append(op);node=prior}
+    }
+    PrinterOperations(valid,result)
+}

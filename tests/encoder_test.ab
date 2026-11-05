@@ -1,0 +1,77 @@
+import "../src/printers.ab"
+import "abla/io"
+import "abla/bytes"
+import "abla/text"
+import "abla/process/exit"
+var checked=0
+fun check(ok: bool,label: string): void {
+    checked=checked+1
+    if(!ok){eprintln("FAIL $label");exit(1)}
+}
+fun hex(bytes: string): string {
+    val digits="0123456789abcdef"
+    val out=byteBuffer()
+    for(b in bytes){out.appendText(byteEncode(digits[b/16]));out.appendText(byteEncode(digits[b%16]))}
+    out.toString()
+}
+class CapturePrinter(var calls: int=0,var received: string=""): PrinterTransport {
+    fun send(contents: string,timeoutMilliseconds: int): PrinterSendResult {
+        this.calls=this.calls+1;this.received=contents
+        PrinterSendResult(false,"unknown",3,PrinterError("test_partial","Synthetic partial submission."))
+    }
+}
+fun main: int {
+    val prefix="1b401b4d001b74131b5200"
+    val style="1b61001b45001d2100"
+    val first=printerJob().text("Hello")
+    val longer=first.text("World")
+    check(hex(encodeEscPos(first).bytes)==prefix+style+"48656c6c6f0a","independent text bytes")
+    check(hex(encodeEscPos(first).bytes)==prefix+style+"48656c6c6f0a","persistent earlier job is unchanged")
+    check(hex(encodeEscPos(longer).bytes)==prefix+style+"48656c6c6f0a"+style+"576f726c640a","persistent append preserves command order")
+    val text="12345678901234567890123456789012345"
+    check(encodeEscPos(printerJob().text(text),printer58mm()).bytes.endsWith("12345678901234567890123456789012\n345\n"),"58mm wraps at32 fontA columns")
+    check(encodeEscPos(printerJob().text(text),printer80mm()).bytes.endsWith(text+"\n"),"80mm preserves the same35 characters onone line")
+    check(encodeEscPos(printerJob().text("12345678901234567",doubleWidth=true),printer58mm()).bytes.endsWith("1234567890123456\n7\n"),"double width halves available columns")
+    check(hex(encodeEscPos(printerJob().text("áéíóúãõç€")).bytes)==prefix+style+"a082a1a2a3c6e487d50a","Portuguese CP858 andEuro independent bytes")
+    check(hex(encodeEscPos(printerJob().feed(3).cut().drawer()).bytes)==prefix+"1b64031d5642001b700032fa","feed/cut/pin2 pulse golden")
+    check(hex(encodeEscPos(printerJob().drawer(pin=5,onMilliseconds=200,offMilliseconds=400)).bytes)==prefix+"1b700164c8","pin5 pulse uses2ms units")
+    val qr=encodeEscPos(printerJob().qr("ATCUD:TEST-1"))
+    check(hex(qr.bytes)==prefix+"1b61011d286b0400314132001d286b03003143041d286b03003145311d286b0f0031503041544355443a544553542d311d286b0300315130","QR model/size/level/store/print independent golden")
+    val longQr=encodeEscPos(printerJob().qr("x".repeat(256)))
+    check(longQr.succeeded && hex(longQr.bytes).contains("1d286b0301315030"),"QR length uses both little-endian length bytes")
+    for(level in ["L","M","Q","H"])check(encodeEscPos(printerJob().qr("test",level=level)).succeeded,"QR error correction $level")
+    for(code in [0,1,9,13,27,31,127]){
+        val bad=encodeEscPos(printerJob().text("safe"+byteEncode(code)))
+        check(!bad.succeeded && bad.bytes=="" && bad.error.code=="control_character","text refuses control $code without partial output")
+    }
+    check(!encodeEscPos(printerJob().text(byteEncode(192)+byteEncode(128))).succeeded,"invalid UTF8 refuses overlong NUL")
+    check(!encodeEscPos(printerJob().text("😀")).succeeded,"unsupported glyph is not replaced silently")
+    check(!encodeEscPos(printerJob().text("é"),EscPosProfile(codepage="ascii")).succeeded,"explicit ASCII rejects nonASCII")
+    check(encodeEscPos(printerJob().text("A"),EscPosProfile(codepage="ascii")).bytes.startsWith(byteEncode(27)+"@"+byteEncode(27)+"M"+byteEncode(0)+byteEncode(27)+"R"),"ASCII has no unchosen codepage command")
+    check(!encodeEscPos(printerJob().feed(0)).succeeded && !encodeEscPos(printerJob().feed(256)).succeeded,"feed rejects invalid range")
+    check(!encodeEscPos(printerJob().cut(),EscPosProfile(supportsCut=false)).succeeded,"profile can refuse cutter")
+    check(!encodeEscPos(printerJob().drawer(),EscPosProfile(supportsDrawer=false)).succeeded,"profile can refuse drawer")
+    check(!encodeEscPos(printerJob().drawer(pin=3)).succeeded && !encodeEscPos(printerJob().drawer(onMilliseconds=99)).succeeded,"drawer pin/timing validated")
+    check(!encodeEscPos(printerJob().text("A",align="evil")).succeeded,"alignment is typed validated data")
+    check(!encodeEscPos(printerJob().qr("",moduleSize=0)).succeeded,"QR bounds validated")
+    check(!encodeEscPos(printerJob().qr("X",level="wrong")).succeeded,"QR correction validated")
+    check(!encodeEscPos(printerJob().text("X"),EscPosProfile(width=0)).succeeded,"width validated")
+    check(!encodeEscPos(printerJob().text("X"),EscPosProfile(maximumBytes=8)).succeeded,"output limit refuses ratherthan truncates")
+    check(!encodeEscPos(PrinterJob(null,PrinterOperation("text","x"),1)).succeeded,"malformed persistent list refused")
+    val xml=eposPrintXml(printerJob().text("A<&\"'",bold=true).feed(2).qr("ATCUD:\\x1b&X").cut().drawer())
+    val expected="<epos-print xmlns=\"http://www.epson-pos.com/schemas/2011/03/epos-print\"><text lang=\"en\" font=\"font_a\" align=\"left\" em=\"true\" width=\"1\" height=\"1\">A&lt;&amp;&quot;&apos;&#10;</text><feed line=\"2\"/><symbol type=\"qrcode_model_2\" level=\"level_m\" width=\"4\" align=\"center\">ATCUD:\\\\x1b&amp;X</symbol><cut type=\"feed\"/><pulse drawer=\"drawer_1\" time=\"pulse_100\"/></epos-print>"
+    check(xml.succeeded && xml.bytes==expected,"ePOS complete XML golden incl attribute/text/QR escape layers")
+    check(eposPrintXml(printerJob().text("ação €")).bytes.contains("ação €&#10;"),"ePOS keeps UTF8 ratherthan printer codepage bytes")
+    check(!eposPrintXml(printerJob().qr("test",moduleSize=2)).succeeded,"ePOS has its own supported module range")
+    check(!eposPrintXml(printerJob().drawer(onMilliseconds=102)).succeeded,"ePOS refuses unrepresentable pulse timing")
+    check(eposSoapEnvelope(first).bytes.contains("<s:Body><epos-print") && eposSoapEnvelope(first).bytes.endsWith("</epos-print></s:Body></s:Envelope>"),"SOAP wrapper is explicit")
+    val capture=CapturePrinter()
+    val sent=printerSendEscPos(first,capture)
+    check(capture.calls==1 && capture.received==encodeEscPos(first).bytes && !sent.succeeded && sent.outcome=="unknown" && sent.bytesWritten==3,"transport uncertainty is preserved without replay")
+    val before=capture.calls
+    val rejected=printerSendEscPos(printerJob().text(byteEncode(27)).drawer(),capture)
+    check(!rejected.succeeded && rejected.outcome=="notSent" && capture.calls==before,"all encoding validates before any transport effect")
+    check(!printerSendEscPos(first,capture,timeoutMilliseconds=0).succeeded && capture.calls==before,"invalid timeout does not call transport")
+    println("PASS encoder golden/control tests: $checked checks")
+    0
+}

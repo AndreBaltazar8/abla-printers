@@ -1,0 +1,48 @@
+import "types.ab"
+import "abla/text"
+import "abla/bytes"
+
+// Unicode scalars for bytes 128..255 of IBM CP858 (PC850 with Euro at D5).
+// This is encoding data, not a reproduction of an Epson character-table image.
+private val printerCp858 = "ÇüéâäàåçêëèïîìÄÅÉæÆôöòûùÿÖÜø£Ø×ƒáíóúñÑªº¿®¬½¼¡«»░▒▓│┤ÁÂÀ©╣║╗╝¢¥┐└┴┬├─┼ãÃ╚╔╩╦╠═╬¤ðÐÊËÈ€ÍÎÏ┘┌█▄¦Ì▀ÓßÔÒõÕµþÞÚÛÙýÝ¯´­±‗¾¶§÷¸°¨·¹³²■ "
+fun printerTextBytes(value: string,codepage: string): PrinterEncodeResult {
+    if(value.size>65536 || !utf8Info(value).valid)return printerEncodeFailure("invalid_text","Text must be bounded valid UTF-8.")
+    if(codepage!="ascii" && codepage!="pc858")return printerEncodeFailure("invalid_codepage","Choose ascii or pc858 explicitly.")
+    val out=byteBuffer()
+    var offset=0
+    while(offset<value.size){
+        val length=utf8SequenceLength(value[offset])
+        val scalar=utf8DecodeAt(value,offset)
+        if(scalar==10 || (scalar>=32 && scalar<=126))out.appendText(byteEncode(scalar))
+        else{
+            if(scalar<32 || (scalar>=127 && scalar<=159))return printerEncodeFailure("control_character","Text cannot contain printer commands or control characters.")
+            if(codepage=="ascii")return printerEncodeFailure("unsupported_character","The chosen codepage cannot represent this character.")
+            val glyph=value.slice(offset,offset+length)
+            var at=0;var index=0;var found=-1
+            while(at<printerCp858.size && found<0){
+                val size=utf8SequenceLength(printerCp858[at])
+                if(printerCp858.slice(at,at+size)==glyph)found=index+128
+                at=at+size;index=index+1
+            }
+            if(found<0)return printerEncodeFailure("unsupported_character","The chosen codepage cannot represent this character.")
+            out.appendText(byteEncode(found))
+        }
+        offset=offset+length
+    }
+    PrinterEncodeResult(true,out.toString())
+}
+fun printerAlignment(value: string): int = if(value=="left")0 else if(value=="center")1 else if(value=="right")2 else -1
+fun printerProfileValid(profile: EscPosProfile): bool = profile.width>=1 && profile.width<=128 &&
+    (profile.codepage=="ascii" || profile.codepage=="pc858") && profile.maximumBytes>=1 && profile.maximumBytes<=1048576
+fun printerQrValid(op: PrinterOperation): bool {
+    if(op.value.size<1 || op.value.size>1273 || !utf8Info(op.value).valid || op.amount<1 || op.amount>8 || op.pin<48 || op.pin>51)return false
+    var offset=0
+    while(offset<op.value.size){
+        val scalar=utf8DecodeAt(op.value,offset)
+        if(scalar<32 || (scalar>=127 && scalar<=159))return false
+        offset=offset+utf8SequenceLength(op.value[offset])
+    }
+    true
+}
+fun printerDrawerValid(op: PrinterOperation): bool = (op.pin==2 || op.pin==5) &&
+    op.amount>=2 && op.amount<=510 && op.amount%2==0 && (op.extra==0 || (op.extra>=op.amount && op.extra<=510 && op.extra%2==0))
