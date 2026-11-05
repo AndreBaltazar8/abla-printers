@@ -6,19 +6,29 @@ or contacted by an encoder, and no failed print job is retried automatically.
 
 ```abla
 import github("AndreBaltazar8/abla-printers")
+import "abla/io"
 
-val job = printerJob()
-    .text("Loja exemplo", align="center", bold=true)
-    .text("Total: 12,30 €")
-    .text("ATCUD: TEST-1")
-    .qr("SYNTHETIC TEST PAYLOAD")
-    .feed(3)
-    .cut()
-val encoded = encodeEscPos(job, printer58mm())
-if (encoded.succeeded) {
-    val transport = TcpPrinterTransport(TcpPrinterConfig("192.0.2.10"))
-    val sent = printerSendEscPos(job, transport, printer58mm(), 5000)
-    // Inspect sent.outcome; a successful local write is not a paper receipt.
+fun sendPreparedReceipt(job: PrinterJob, address: string): PrinterSendResult {
+    val transport = TcpPrinterTransport(TcpPrinterConfig(address))
+    printerSendEscPos(job, transport, printer58mm(), 5000)
+}
+
+fun main: int {
+    val job = printerJob()
+        .text("Loja exemplo", align="center", bold=true)
+        .text("Total: 12,30 €")
+        .text("ATCUD: TEST-1")
+        .qr("SYNTHETIC TEST PAYLOAD")
+        .feed(3)
+        .cut()
+    val encoded = encodeEscPos(job, printer58mm())
+    if (!encoded.succeeded) {
+        eprintln(encoded.error.message)
+        return 1
+    }
+    // This example encodes only; it does not contact a printer.
+    println("Encoded ${encoded.bytes.size} bytes")
+    0
 }
 ```
 
