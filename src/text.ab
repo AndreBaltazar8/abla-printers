@@ -39,7 +39,7 @@ fun printerQrValid(op: PrinterOperation): bool {
     var offset=0
     while(offset<op.value.size){
         val scalar=utf8DecodeAt(op.value,offset)
-        if(scalar<32 || (scalar>=127 && scalar<=159))return false
+        if(scalar<32 || (scalar>=127 && scalar<=159) || (scalar>=64976 && scalar<=65007) || scalar%65536>=65534)return false
         offset=offset+utf8SequenceLength(op.value[offset])
     }
     true

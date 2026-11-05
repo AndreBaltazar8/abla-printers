@@ -72,6 +72,12 @@ fun main: int {
     if(refused.succeeded || refused.outcome!="notSent" || refused.bytesWritten!=0)return 40
     val wrong=TcpPrinterTransport(TcpPrinterConfig("printer.invalid")).send("x",100)
     if(wrong.succeeded || wrong.error.code!="invalid_config")return 41
+    var unused=tcpListenAddress(ipv4SocketAddress("127.0.0.1",0),4)
+    val unusedPort=unused.localPort()
+    if(unusedPort<1)return 42
+    unused.close()
+    val closed=TcpPrinterTransport(TcpPrinterConfig("127.0.0.1",unusedPort)).send("x",100)
+    if(closed.succeeded || closed.outcome!="notSent" || closed.bytesWritten!=0 || closed.error.code!="connect_failed")return 43
     println("PASS fakeTCP9100 exact bytes, partial timeout/unknown, invalid config")
     0
 }

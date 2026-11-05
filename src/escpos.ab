@@ -1,4 +1,6 @@
 import "text.ab"
+import "types.ab"
+import "abla/bytes"
 
 fun encodeEscPos(job: PrinterJob,profile: EscPosProfile=EscPosProfile()): PrinterEncodeResult {
     if(!printerProfileValid(profile))return printerEncodeFailure("invalid_profile","Invalid width, codepage or output limit.")

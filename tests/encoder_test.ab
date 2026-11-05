@@ -55,6 +55,7 @@ fun main: int {
     check(!encodeEscPos(printerJob().text("A",align="evil")).succeeded,"alignment is typed validated data")
     check(!encodeEscPos(printerJob().qr("",moduleSize=0)).succeeded,"QR bounds validated")
     check(!encodeEscPos(printerJob().qr("X",level="wrong")).succeeded,"QR correction validated")
+    check(!eposPrintXml(printerJob().qr(utf8Encode(65534))).succeeded && !eposPrintXml(printerJob().qr(utf8Encode(65535))).succeeded,"XML noncharacters refused")
     check(!encodeEscPos(printerJob().text("X"),EscPosProfile(width=0)).succeeded,"width validated")
     check(!encodeEscPos(printerJob().text("X"),EscPosProfile(maximumBytes=8)).succeeded,"output limit refuses ratherthan truncates")
     check(!encodeEscPos(PrinterJob(null,PrinterOperation("text","x"),1)).succeeded,"malformed persistent list refused")

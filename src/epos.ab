@@ -1,4 +1,7 @@
 import "text.ab"
+import "types.ab"
+import "abla/bytes"
+import "abla/text"
 
 private fun printerXmlText(value: string,escapeBackslash: bool=false): string {
     val out=byteBuffer()
