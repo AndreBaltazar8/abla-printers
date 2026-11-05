@@ -40,7 +40,7 @@ fun serveEposFixture(var listener: TcpListener): int {
         val request=httpParseRequest(raw)
         val valid=request.method=="POST" && request.path=="/cgi-bin/epos/service.cgi" && request.queryParameter("devid")=="local_printer" && request.queryParameter("timeout")=="1000" && request.header("Content-Type")=="text/xml; charset=utf-8" && request.header("SOAPAction")=="\"\"" && request.body==simulatorGoldenSoap()
         val status=if(valid)200 else 400
-        val body="<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\"><s:Body><response xmlns=\"http://www.epson-pos.com/schemas/2011/03/epos-print\" success=\""+(if(valid)"true"else"false")+"\" code=\""+(if(valid)""else"EPTR_PARAMETER")+"\" status=\"0\"/></s:Body></s:Envelope>"
+        val body="<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\"><s:Body><response xmlns=\"http://www.epson-pos.com/schemas/2011/03/epos-print\" success=\""+(if(valid)"true"else"false")+"\" code=\""+(if(valid)""else"SchemaError")+"\" status=\"0\"/></s:Body></s:Envelope>"
         val response=HttpResponse(status,[HttpHeader("Content-Type","text/xml; charset=utf-8")],body)
         val sent=peer.writeNetwork(response.render(),1000)
         peer.close()
@@ -72,7 +72,7 @@ fun main: int {
     if(result<0){linuxSyscall2(62,child,9);linuxWaitProcess(child);return 4}
     if(result!=0)return result
     if(!good.succeeded || !good.complete || good.response.status!=200 || !good.response.body.contains("success=\"true\""))return 5
-    if(!badXml.complete || badXml.response.status!=400 || !badXml.response.body.contains("EPTR_PARAMETER"))return 6
+    if(!badXml.complete || badXml.response.status!=400 || !badXml.response.body.contains("SchemaError"))return 6
     if(!badHeader.complete || badHeader.response.status!=400)return 7
     println("PASS ePOS SOAP/HTTP stand-in: exact UTF8/XML/QR/cut/drawer fixture accepted; malformed XML and wrong headers refused")
     0

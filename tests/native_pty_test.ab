@@ -1,6 +1,7 @@
 // No hardware: a POSIX pseudo-terminal stands in for the printer UART.
 import "../src/native.ab"
 import "abla/serial"
+import "abla/device"
 import "abla/io"
 import "abla/bytes"
 import "abla/process/time"
@@ -21,6 +22,8 @@ trusted fun main: int {
     if(path==""){linuxSyscall1(3,int(master));return 3}
     val flags=linuxSyscall3(72,int(master),3,0)
     if(flags<0 || linuxSyscall3(72,int(master),4,flags | 2048)<0){linuxSyscall1(3,int(master));return 4}
+    var keeper=deviceOpen(path,true)
+    if(!keeper.opened()){linuxSyscall1(3,int(master));return 7}
     val job=printerJob().text("ação €\nraw").qr("ATCUD:TEST-1").feed(3).cut().drawer()
     val encoded=encodeEscPos(job)
     val transport=SerialPrinterTransport(path,SerialSettings(baud=19200))
@@ -35,6 +38,7 @@ trusted fun main: int {
         else break
     }
     scratch.close()
+    keeper.close()
     linuxSyscall1(3,int(master))
     if(!sent.succeeded || sent.outcome!="submitted" || sent.bytesWritten!=encoded.bytes.size)return 5
     if(received.toText()!=encoded.bytes)return 6
