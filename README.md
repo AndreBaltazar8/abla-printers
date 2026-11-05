@@ -114,6 +114,13 @@ final readiness before closing: a timeout can report every byte written while
 the outcome is still `unknown`. Neither that readiness nor `/dev/null` fixture
 acceptance establishes paper output. No subprocess transport is used.
 
+The native timeout bounds the write/readiness phase, not the entire `send()`
+call. Its deadline is computed before opening/configuring the device, but native
+open, configuration and driver close time are not deadline-bounded. In
+particular, tty close can wait on the driver after the write has finished. The
+library does not flush accepted bytes or change administrative port settings to
+hide that delay; applications should schedule native I/O accordingly.
+
 ## Epson ePOS-Print XML
 
 `eposPrintXml(job, profile)` returns the print document. `eposSoapEnvelope(job,

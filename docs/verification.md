@@ -31,6 +31,11 @@ Raw logs and source/toolchain hashes are retained locally under
 `build/validation/`. Public CI and package-import results are recorded separately
 when available.
 
+Timing boundary: native `writeUntil` is deadline-bounded; the enclosing
+open/configure/write/close call is not a proven total wall-clock bound. Driver
+close time can extend beyond the write deadline. No flush/discard workaround or
+administrative port-setting change is used.
+
 The local HTTP stand-in implements one bounded golden fixture, not Epson
 firmware, complete XML-schema validation, printer status, or fiscal validation.
 Real cutter/drawer behavior, model compatibility, QR scan quality, and paper
