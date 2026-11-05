@@ -72,8 +72,7 @@ fun main: int {
     val before=capture.calls
     val rejected=printerSendEscPos(printerJob().text(byteEncode(27)).drawer(),capture)
     check(!rejected.succeeded && rejected.outcome=="notSent" && capture.calls==before,"all encoding validates before any transport effect")
-    val captureTransport: PrinterTransport=capture
-    check(!printerSendEscPos(first,captureTransport,timeoutMilliseconds=0).succeeded && capture.calls==before,"invalid timeout does not call transport")
+    check(!printerSendEscPos(first,capture,EscPosProfile(),0).succeeded && capture.calls==before,"invalid timeout does not call transport")
     println("PASS encoder golden/control tests: $checked checks")
     0
 }
