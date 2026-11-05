@@ -16,6 +16,8 @@ fun main: int {
     val nonSerial=SerialPrinterTransport("/dev/null",SerialSettings())
     val unconfigured=printerSendEscPos(job,nonSerial)
     if(unconfigured.succeeded || unconfigured.outcome!="notSent" || unconfigured.bytesWritten!=0)return 4
+    val lossy=SerialPrinterTransport("/dev/null",SerialSettings(dataBits=7))
+    if(printerSendEscPos(job,lossy).error.code!="invalid_config")return 5
     println("PASS native adapters: character-device acceptance, missing/invalid path, non-tty refusal; no hardware")
     0
 }

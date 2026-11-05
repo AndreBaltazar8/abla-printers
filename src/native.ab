@@ -38,6 +38,7 @@ fun usbPrinter(path: string="/dev/usb/lp0",maximumBytes: int=1048576): DevicePri
 
 class SerialPrinterTransport(val path: string,val settings: SerialSettings=SerialSettings(),val maximumBytes: int=1048576): PrinterTransport {
     fun send(contents: string,timeoutMilliseconds: int): PrinterSendResult {
+        if(!this.settings.raw || this.settings.dataBits!=8)return PrinterSendResult(false,"notSent",0,PrinterError("invalid_config","Printer commands require raw mode and eight data bits."))
         if(!printerNativeConfigValid(this.path,contents.size,this.maximumBytes,timeoutMilliseconds))return PrinterSendResult(false,"notSent",0,PrinterError("invalid_config","Use an absolute /dev serial path, bounded payload and timeout."))
         val deadline=monotonicMilliseconds()+timeoutMilliseconds
         var connection=serialOpen(this.path,this.settings)
