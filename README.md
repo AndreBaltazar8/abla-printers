@@ -102,9 +102,9 @@ val serial = SerialPrinterTransport(
 ```
 
 The core entry remains compatible with 0.2.45. The native submodule requires
-the new `abla/device` and `abla/serial` standard-library APIs, targeted for
-0.2.47; its current Linux verification uses the upstream frozen API snapshot.
-The separate native workflow is manual until that compiler release is available.
+the released `abla/device` and `abla/serial` standard-library APIs in0.2.47.
+The separate native workflow runs on Linux and macOS with that release;
+earlier Linux-only verification used the upstream frozen API snapshot.
 It is not part of the 0.2.45 core CI result.
 
 Linux USB printers use the kernel usblp character node. Serial settings are host
