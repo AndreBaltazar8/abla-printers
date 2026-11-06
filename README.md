@@ -103,7 +103,7 @@ val serial = SerialPrinterTransport(
 
 The core entry remains compatible with 0.2.45. The native submodule requires
 the released `abla/device` and `abla/serial` standard-library APIs in0.2.47.
-The separate native workflow runs on Linux and macOS with that release;
+The separate native workflow runs on Linux and macOS with released 0.2.48;
 earlier Linux-only verification used the upstream frozen API snapshot.
 It is not part of the 0.2.45 core CI result.
 

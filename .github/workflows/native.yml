@@ -24,7 +24,7 @@ jobs:
           nix_path: nixpkgs=channel:nixos-unstable
       - uses: AndreBaltazar8/setup-abla@13c3fdc74b5961bf2d281b25c47e4b9ace18d11e
         with:
-          version: '0.2.47'
+          version: '0.2.48'
       - name: Record released compiler
         run: ablac --version
       - name: Native character-device and PTY simulations (no hardware)
