@@ -1,5 +1,6 @@
 import "../src/printers.ab"
 import "abla/io"
+import "abla/text"
 import "abla/net"
 import "abla/bytes"
 import "abla/process/time"
