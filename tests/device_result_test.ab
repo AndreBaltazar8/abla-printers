@@ -1,5 +1,4 @@
 import "../src/device_result.ab"
-import "../src/types.ab"
 import "abla/io"
 fun main: int {
     val empty=printerDeviceSubmission(false,0,12,"permission-denied")
