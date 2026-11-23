@@ -102,10 +102,8 @@ val serial = SerialPrinterTransport(
 ```
 
 The core entry remains compatible with 0.2.45. The native submodule requires
-the released `abla/device` and `abla/serial` standard-library APIs in0.2.47.
-The separate native workflow runs on Linux and macOS with released 0.2.48;
-earlier Linux-only verification used the upstream frozen API snapshot.
-It is not part of the 0.2.45 core CI result.
+the `abla/device` and `abla/serial` standard-library APIs released in 0.2.47.
+The separate native workflow runs on Linux and macOS with released ablac 0.2.67.
 
 Linux USB printers use the kernel usblp character node. Serial settings are host
 settings and must match the printer. Raw mode and eight data bits are required;
@@ -138,7 +136,7 @@ specify an explicit even off-time. Unsupported settings fail explicitly.
 
 ## Verification
 
-CI is pinned to released ablac 0.2.45. Run `make test COMPILER=ablac` in the
+CI is pinned to released ablac 0.2.67. Run `make test COMPILER=ablac` in the
 compiler's toolchain environment. Tests use independent ESC/POS and XML goldens,
 Portuguese/codepage vectors, wrapping, input rejection, immutable jobs and an
 actual loopback fake printer on TCP 9100, checking code page, cut and drawer
