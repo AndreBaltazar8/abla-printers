@@ -1,0 +1,83 @@
+// Raw PBM uses MSB-first pixels and black=1, exactly as ESC/POS does.
+import "../src/types.ab"
+import "abla/bytes"
+import "abla/text"
+
+val epsonRasterMaximumBytes = 8388608
+private val rasterRowBytes = 72
+private val bandRows = 256
+
+private fun pbmSpace(byte: int): bool = byte == 32 || (byte >= 9 && byte <= 13)
+
+private fun pbmSkip(contents: string, start: int): int {
+    var at = start
+    while (at < contents.size) {
+        if (pbmSpace(contents[at])) at = at + 1
+        else if (contents[at] == 35) {
+            while (at < contents.size && contents[at] != 10 && contents[at] != 13) at = at + 1
+        } else return at
+    }
+    at
+}
+
+private class PbmNumber(val value: int, val end: int)
+
+private fun pbmNumber(contents: string, start: int): PbmNumber {
+    val first = pbmSkip(contents, start)
+    var at = first
+    var value = 0
+    while (at < contents.size && contents[at] >= 48 && contents[at] <= 57) {
+        value = value * 10 + contents[at] - 48
+        if (value > epsonRasterMaximumBytes / rasterRowBytes) return PbmNumber(0, at)
+        at = at + 1
+    }
+    PbmNumber(value, at)
+}
+
+fun encodeEpsonRaster(contents: string): PrinterEncodeResult {
+    if (contents.size < 4 || contents.size > epsonRasterMaximumBytes ||
+        !contents.startsWith("P4") || !pbmSpace(contents[2]))
+        return printerEncodeFailure("invalid_pbm", "Expected one binary PBM (P4) image.")
+
+    val width = pbmNumber(contents, 2)
+    if (width.value != rasterRowBytes * 8 || width.end >= contents.size ||
+        (!pbmSpace(contents[width.end]) && contents[width.end] != 35))
+        return printerEncodeFailure("invalid_width", "The binary PBM must be exactly 576 dots wide.")
+
+    val height = pbmNumber(contents, width.end)
+    if (height.value < 1 || height.end >= contents.size || !pbmSpace(contents[height.end]))
+        return printerEncodeFailure("invalid_height", "The binary PBM needs a positive, bounded height.")
+
+    // Consume the delimiter only. The first pixel byte may itself be whitespace.
+    var pixel = height.end + 1
+    val rasterBytes = height.value * rasterRowBytes
+    if (contents.size - pixel == rasterBytes + 1 && contents[height.end] == 13 && contents[pixel] == 10)
+        pixel = pixel + 1
+    if (contents.size - pixel != rasterBytes)
+        return printerEncodeFailure("invalid_size", "The binary PBM must contain exactly one complete raster.")
+
+    val output = byteBuffer()
+    val esc = byteEncode(27)
+    val gs = byteEncode(29)
+    val zero = byteEncode(0)
+    output.appendText(esc + "@")
+    // Epson can recognize real-time commands even inside graphics data.
+    // Disable DLE DC4 functions 1 (drawer pulse) and 2 (power-off) before any pixels.
+    output.appendText(gs + "(D" + byteEncode(5) + zero + byteEncode(20) +
+        byteEncode(1) + zero + byteEncode(2) + zero)
+    var rows = height.value
+    while (rows > 0) {
+        val band = if (rows < bandRows) rows else bandRows
+        val next = pixel + band * rasterRowBytes
+        output.appendText(gs + "v0" + zero + byteEncode(rasterRowBytes) + zero +
+            byteEncode(band % 256) + byteEncode(band / 256))
+        output.appendText(contents.slice(pixel, next))
+        pixel = next
+        rows = rows - band
+    }
+    // Function B feeds to the cutter, then makes one partial cut.
+    output.appendText(gs + "VB" + zero)
+    if (output.size() > epsonRasterMaximumBytes)
+        return printerEncodeFailure("output_limit", "Raster job exceeds the transport's 8 MiB limit.")
+    PrinterEncodeResult(true, output.toText())
+}

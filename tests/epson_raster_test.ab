@@ -1,0 +1,96 @@
+import "../examples/epson_raster.ab"
+import "abla/bytes"
+import "abla/io"
+import "abla/net"
+import "abla/process/arguments"
+import "abla/sys/linux"
+import "abla/text"
+
+private val setup = byteEncode(27) + "@" +
+    byteEncode(29) + "(D" + byteEncode(5) + byteEncode(0) + byteEncode(20) +
+    byteEncode(1) + byteEncode(0) + byteEncode(2) + byteEncode(0)
+private val raster = byteEncode(29) + "v0" + byteEncode(0) + "H" + byteEncode(0)
+private val cut = byteEncode(29) + "VB" + byteEncode(0)
+
+private fun goldenPixels(): string =
+    (" " + byteEncode(27) + "p" + byteEncode(0) + "X" + byteEncode(255) + "0".repeat(66)).repeat(256) +
+    ("\n" + byteEncode(255).repeat(71))
+
+private fun goldenWire(): string {
+    val pixels = goldenPixels()
+    setup + raster + byteEncode(0) + byteEncode(1) + pixels.slice(0, 18432) +
+        raster + byteEncode(1) + byteEncode(0) + pixels.slice(18432, 18504) + cut
+}
+
+private fun checkPbm(): bool {
+    val pixels = goldenPixels()
+    val valid = encodeEpsonRaster("P4\n# comment\n576 257\n" + pixels)
+    val crlf = encodeEpsonRaster("P4\r\n576 257\r\n" + pixels)
+    val wrongWidth = encodeEpsonRaster("P4\n575 257\n" + pixels)
+    val wrongFormat = encodeEpsonRaster("P1\n576 257\n" + pixels)
+    val truncated = encodeEpsonRaster("P4\n576 257\n" + pixels.slice(0, pixels.size - 1))
+    val trailing = encodeEpsonRaster("P4\n576 257\n" + pixels + "x")
+    val hugeHeight = encodeEpsonRaster("P4\n576 999999999999999999999\n" + pixels)
+    valid.succeeded && valid.bytes == goldenWire() && crlf.succeeded && crlf.bytes == valid.bytes &&
+        wrongWidth.error.code == "invalid_width" && wrongFormat.error.code == "invalid_pbm" &&
+        truncated.error.code == "invalid_size" && trailing.error.code == "invalid_size" &&
+        hugeHeight.error.code == "invalid_height"
+}
+
+private fun reconstruct(wire: string, path: string): bool {
+    if (!wire.startsWith(setup) || !wire.endsWith(cut)) return false
+    val pixels = byteBuffer()
+    val end = wire.size - cut.size
+    var at = setup.size
+    var height = 0
+    var bands = 0
+    while (at < end) {
+        if (end - at < 8 || wire.slice(at, at + 6) != raster) return false
+        val rows = wire[at + 6] + 256 * wire[at + 7]
+        val next = at + 8 + 72 * rows
+        if (rows < 1 || rows > 256 || next > end || (next < end && rows != 256)) return false
+        pixels.appendText(wire.slice(at + 8, next))
+        height = height + rows
+        bands = bands + 1
+        at = next
+    }
+    if (bands < 1) return false
+    val pbm = "P4\n576 ${height}\n" + pixels.toText()
+    val file = linuxOpen(path, 577, 384) // O_WRONLY | O_CREAT | O_TRUNC, 0600
+    if (file.descriptor < 0) return false
+    val written = file.write(pbm)
+    file.close()
+    if (written != pbm.size) return false
+    println("PASS captured ${wire.size} ESC/POS bytes, ${bands} bands, ${height} rows, one feed-and-cut")
+    true
+}
+
+fun main: int {
+    if (processArgumentCount() != 2 || !checkPbm()) {
+        eprintln("Raster PBM golden or refusal checks failed.")
+        return 1
+    }
+
+    // Bind our own socket before the sender starts. A busy port fails closed.
+    var listener = tcpListenAddress(ipv4SocketAddress("127.0.0.1", 9100), 1)
+    if (listener.localPort() != 9100) return 2
+    println("READY")
+    var peer = listener.accept()
+    listener.close()
+    if (peer.descriptor < 0) return 3
+    val received = byteBuffer()
+    while (true) {
+        val chunk = peer.readResult(65536)
+        if (chunk.reachedEof()) break
+        if (chunk.failed() || received.size() + chunk.bytes.size > 8388608) return 4
+        received.appendText(chunk.bytes)
+    }
+    peer.close()
+    val wire = received.toText()
+    if (processArgument(0) == "golden") {
+        if (wire != goldenWire()) return 5
+        println("PASS independent TCP golden (${wire.size} bytes), 7 PBM checks")
+    }
+    if (!reconstruct(wire, processArgument(1))) return 6
+    0
+}

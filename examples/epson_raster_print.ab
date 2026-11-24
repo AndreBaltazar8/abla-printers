@@ -1,0 +1,45 @@
+import "epson_raster.ab"
+import "../src/native.ab"
+import "../src/tcp.ab"
+import "abla/bytes"
+import "abla/io"
+import "abla/process/arguments"
+import "abla/sys/linux"
+
+fun readEpsonPbm(path: string): string {
+    val file = linuxOpen(path)
+    if (file.descriptor < 0) return ""
+    val contents = byteBuffer()
+    while (contents.size() <= epsonRasterMaximumBytes) {
+        val chunk = file.read(65536)
+        if (chunk.size == 0) break
+        contents.appendText(chunk)
+    }
+    file.close()
+    contents.toText()
+}
+
+fun main: int {
+    val count = processArgumentCount()
+    val mode = if (count > 0) processArgument(0) else ""
+    if (count != 3 || (mode != "--device" && mode != "--tcp")) {
+        eprintln("Usage: epson-raster-print (--device /dev/usb/lp0 | --tcp IPv4) page.pbm")
+        return 2
+    }
+    val encoded = encodeEpsonRaster(readEpsonPbm(processArgument(2)))
+    if (!encoded.succeeded) {
+        eprintln(encoded.error.message)
+        return 2
+    }
+    val target = processArgument(1)
+    val sent = if (mode == "--device")
+        usbPrinter(target, epsonRasterMaximumBytes).send(encoded.bytes, 30000)
+    else
+        TcpPrinterTransport(TcpPrinterConfig(target, maximumBytes=epsonRasterMaximumBytes)).send(encoded.bytes, 30000)
+    if (!sent.succeeded) {
+        eprintln(sent.outcome + ": " + sent.error.message)
+        return 1
+    }
+    println("Submitted ${sent.bytesWritten} ESC/POS bytes")
+    0
+}
