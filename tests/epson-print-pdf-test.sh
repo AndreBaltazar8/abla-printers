@@ -56,6 +56,7 @@ qrencode -t EPS -l M -v 9 -m 4 -s 1 -o "$temp_dir/qr.eps" "$payload"
 /Helvetica findfont 8 scalefont setfont
 26 370 moveto (TESTE - SEM VALOR FISCAL) show
 26 353 moveto (1 Artigo - IVA 23%         Total EUR 12,30) show
+11.338583 335 204.094488 0.6 rectfill
 26 315 moveto (ATCUD:TESTE000-1) show
 gsave
 64.6 209 translate

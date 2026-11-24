@@ -21,24 +21,38 @@ width_dots=576
 dpi=203
 
 gs -q -dSAFER -dBATCH -dNOPAUSE -dPDFSTOPONERROR -dFirstPage=1 -dLastPage=1 \
-    -dAutoRotatePages=/None -dTextAlphaBits=4 -dGraphicsAlphaBits=1 -dInterpolateControl=0 \
+    -dAutoRotatePages=/None -dTextAlphaBits=4 -dGraphicsAlphaBits=4 -dInterpolateControl=0 \
     -sDEVICE=pnggray -r"$dpi" -sOutputFile="$temp_dir/page.png" -f "$pdf" >&2
 
 # Threshold a grayscale render at the original pixel grid, with no dithering.
 magick "$temp_dir/page.png" +dither -threshold 50% "$temp_dir/mono.png"
 read -r source_width height < <(magick identify -format '%w %h\n' "$temp_dir/mono.png")
 
+margin_is_white() {
+    local edge=$1
+    [[ $(magick "$temp_dir/mono.png" -crop "$edge" +repage -format '%[fx:minima]' info:) == 1 ]]
+}
+
+crop_fits() {
+    local left=$1 right=$(( $1 + width_dots ))
+    margin_is_white "${left}x${height}+0+0" &&
+        margin_is_white "$((source_width - right))x${height}+${right}+0"
+}
+
 case "$source_width" in
     576) mono="$temp_dir/mono.png" ;;
     639|640)
         # An 80 mm PDF is wider than the 72 mm printhead. Crop only white
         # margins, with no resampling, and refuse if a printed dot would be lost.
-        left=$(( (source_width - width_dots) / 2 ))
-        right=$(( left + width_dots ))
-        for edge in "${left}x${height}+0+0" "$((source_width - right))x${height}+${right}+0"; do
-            [[ $(magick "$temp_dir/mono.png" -crop "$edge" +repage -format '%[fx:minima]' info:) == 1 ]] ||
+        excess=$(( source_width - width_dots ))
+        left=$(( (excess + 1) / 2 ))
+        if ! crop_fits "$left"; then
+            # Odd widths have two equally centered crops at pixel precision.
+            left=$(( excess / 2 ))
+            if (( excess % 2 == 0 )) || ! crop_fits "$left"; then
                 die "Page artwork extends beyond the 576-dot printable width."
-        done
+            fi
+        fi
         mono="$temp_dir/printable.png"
         magick "$temp_dir/mono.png" -crop "${width_dots}x${height}+${left}+0" +repage "$mono"
         ;;
